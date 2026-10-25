@@ -1,4 +1,6 @@
-﻿import pytest
+import pytest
+
+from taskweave.config import TaskWeaveConfig
 
 from taskweave.core.task import Task, TaskState
 from taskweave.scheduling.base import Scheduler
@@ -93,3 +95,34 @@ def test_scheduler_rejects_task_when_queue_is_full():
     finally:
         release.set()
         scheduler.shutdown()
+
+
+def test_scheduler_accepts_config_object():
+    config = TaskWeaveConfig(max_workers=2, queue_capacity=10)
+    scheduler = Scheduler(config=config)
+
+    assert scheduler.config is config
+    assert scheduler.config.max_workers == 2
+    assert scheduler.config.queue_capacity == 10
+
+
+def test_scheduler_rejects_unimplemented_priority_policy():
+    config = TaskWeaveConfig(scheduling_policy="priority")
+
+    with pytest.raises(NotImplementedError, match="FIFO"):
+        Scheduler(config=config)
+
+
+@pytest.mark.parametrize("policy", ["block", "timeout"])
+def test_scheduler_rejects_unimplemented_overflow_policies(policy):
+    config = TaskWeaveConfig(overflow_policy=policy)
+
+    with pytest.raises(NotImplementedError, match="reject"):
+        Scheduler(config=config)
+
+
+def test_scheduler_rejects_config_with_legacy_arguments():
+    config = TaskWeaveConfig()
+
+    with pytest.raises(ValueError, match="either config"):
+        Scheduler(max_workers=2, config=config)

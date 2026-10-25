@@ -4,6 +4,7 @@ from concurrent.futures import Future
 from threading import Lock, Timer
 from typing import Any, Callable
 
+from taskweave.config import TaskWeaveConfig
 from taskweave.core.task import Task, TaskState
 from taskweave.workers.pool import WorkerPool
 
@@ -13,12 +14,37 @@ class Scheduler:
 
     def __init__(
         self,
-        max_workers: int = 2,
-        queue_capacity: int = 100,
+        max_workers: int | None = None,
+        queue_capacity: int | None = None,
+        *,
+        config: TaskWeaveConfig | None = None,
     ) -> None:
+        if config is not None and (
+            max_workers is not None or queue_capacity is not None
+        ):
+            raise ValueError(
+                "Pass either config or max_workers/queue_capacity, not both"
+            )
+
+        if config is None:
+            config = TaskWeaveConfig(
+                max_workers=2 if max_workers is None else max_workers,
+                queue_capacity=100 if queue_capacity is None else queue_capacity,
+            )
+
+        if config.scheduling_policy != "fifo":
+            raise NotImplementedError(
+                "Only FIFO scheduling is implemented currently"
+            )
+        if config.overflow_policy != "reject":
+            raise NotImplementedError(
+                "Only reject overflow handling is implemented currently"
+            )
+
+        self.config = config
         self._pool = WorkerPool(
-            max_workers=max_workers,
-            queue_capacity=queue_capacity,
+            max_workers=config.max_workers,
+            queue_capacity=config.queue_capacity,
         )
         self._lock = Lock()
         self._started = False
@@ -90,7 +116,9 @@ class Scheduler:
     ) -> Any:
         with self._lock:
             if task.state is TaskState.TIMED_OUT:
-                raise TimeoutError(f"Task {task.task_id} timed out before execution")
+                raise TimeoutError(
+                    f"Task {task.task_id} timed out before execution"
+                )
             if task.state is TaskState.CANCELLED:
                 raise RuntimeError(f"Task {task.task_id} was cancelled")
             task.transition_to(TaskState.RUNNING)
@@ -109,28 +137,21 @@ class Scheduler:
             return result
 
     def _on_timeout(self, task_id: str) -> None:
-        # Read state under the lock, but never cancel a Future while holding it.
         with self._lock:
             task = self._tasks.get(task_id)
             future = self._futures.get(task_id)
 
             if task is None or future is None or task.is_terminal:
                 return
-
             if task.state not in {TaskState.QUEUED, TaskState.RUNNING}:
                 return
 
-        # Future callbacks execute synchronously and may acquire self._lock.
-        # Cancellation can fail if a worker has already started the Future.
         if future.cancel():
             with self._lock:
                 if task.state in {TaskState.QUEUED, TaskState.RUNNING}:
                     task.transition_to(TaskState.TIMED_OUT)
             return
 
-        # If cancellation failed, the worker may be starting concurrently.
-        # Marking the task timed out under the lock prevents it from starting
-        # user code if _execute_task has not yet transitioned it to RUNNING.
         with self._lock:
             if task.state in {TaskState.QUEUED, TaskState.RUNNING}:
                 task.transition_to(TaskState.TIMED_OUT)
@@ -142,26 +163,21 @@ class Scheduler:
             timer.cancel()
 
     def cancel(self, task_id: str) -> bool:
-        # Never call Future.cancel() while holding the scheduler lock:
-        # cancellation callbacks execute synchronously and may need this lock.
         with self._lock:
             task = self._tasks.get(task_id)
             future = self._futures.get(task_id)
 
             if task is None or future is None:
                 raise KeyError(f"Unknown task ID: {task_id}")
-
             if task.state is not TaskState.QUEUED:
                 return False
 
-        # Future callbacks can run inside this call, so the lock must be free.
         if not future.cancel():
             return False
 
         with self._lock:
             if task.state is TaskState.QUEUED:
                 task.transition_to(TaskState.CANCELLED)
-
             timer = self._timers.pop(task_id, None)
 
         if timer is not None:
