@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+
+# Native build output
+native/build/
+cmake-build-*/
+*.obj
+*.o
+*.exe
+*.dll
+*.so
+*.a
+*.lib
+
+# Generated measurements and local databases
+reports/*
+!reports/.gitkeep
+benchmarks/output/
+*.sqlite
+*.sqlite3
+*.db
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+# Temporary recovery backups
+*.bak
+*.timeout-backup

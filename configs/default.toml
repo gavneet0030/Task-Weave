@@ -1,0 +1,12 @@
+[taskweave]
+max_workers = 2
+queue_capacity = 100
+scheduling_policy = "fifo"
+overflow_policy = "reject"
+shutdown_grace_seconds = 5.0
+
+[benchmark]
+warmup_runs = 3
+measurement_runs = 30
+max_tasks_per_run = 50000
+max_workers = 8
