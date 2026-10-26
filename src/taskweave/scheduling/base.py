@@ -194,13 +194,17 @@ class Scheduler:
 
     def shutdown(self, wait: bool = True) -> None:
         with self._lock:
-            if self._shutdown:
-                return
+            first_shutdown = not self._shutdown
             self._shutdown = True
-            timers = list(self._timers.values())
-            self._timers.clear()
+
+            if first_shutdown:
+                timers = list(self._timers.values())
+                self._timers.clear()
+            else:
+                timers = []
 
         for timer in timers:
             timer.cancel()
 
-        self._pool.shutdown(wait=wait)
+        timeout = self.config.shutdown_grace_seconds if wait else None
+        self._pool.shutdown(wait=wait, timeout=timeout)

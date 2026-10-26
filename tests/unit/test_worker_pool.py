@@ -143,3 +143,37 @@ def test_shutdown_wait_false_drains_accepted_tasks():
     assert first.result(timeout=3) == "first"
     assert second.result(timeout=3) == "second"
     pool.shutdown(wait=True)
+
+
+
+def test_shutdown_timeout_returns_before_blocked_task_finishes():
+    import time
+    from threading import Event
+
+    pool = WorkerPool(max_workers=1, queue_capacity=2)
+    started = Event()
+    release = Event()
+
+    def blocked_task():
+        started.set()
+        release.wait(timeout=5)
+        return "finished"
+
+    pool.start()
+    future = pool.submit(blocked_task)
+
+    try:
+        assert started.wait(timeout=2), "Worker did not start in time"
+
+        before = time.monotonic()
+        pool.shutdown(wait=True, timeout=0.1)
+        elapsed = time.monotonic() - before
+
+        assert elapsed < 1.0, f"Shutdown waited too long: {elapsed:.2f}s"
+        assert not future.done(), "Blocked task unexpectedly finished"
+    finally:
+        release.set()
+
+    pool.shutdown(wait=True, timeout=2)
+    assert pool._shutdown_complete.is_set()
+    assert future.result(timeout=2) == "finished"

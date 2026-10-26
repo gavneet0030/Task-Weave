@@ -2,7 +2,7 @@
 
 from concurrent.futures import Future
 from queue import Full, Queue
-from threading import Lock, Thread
+from threading import Event, Lock, Thread
 from typing import Any, Callable
 
 
@@ -24,6 +24,8 @@ class WorkerPool:
         self._lock = Lock()
         self._started = False
         self._shutdown = False
+        self._shutdown_complete = Event()
+        self._shutdown_thread: Thread | None = None
 
     def start(self) -> None:
         """Start all worker threads exactly once."""
@@ -86,40 +88,45 @@ class WorkerPool:
                 self._queue.task_done()
 
     def _finish_shutdown(self) -> None:
-        """Drain accepted work, then stop and join every worker."""
-        self._queue.join()
-        for _ in self._threads:
-            self._queue.put(self._STOP)
-        self._queue.join()
-        for thread in self._threads:
-            thread.join()
+        """Drain accepted work, stop workers, and signal completion."""
+        try:
+            self._queue.join()
+            for _ in self._threads:
+                self._queue.put(self._STOP)
+            self._queue.join()
+            for thread in self._threads:
+                thread.join()
+        finally:
+            self._shutdown_complete.set()
 
-    def shutdown(self, wait: bool = True) -> None:
-        """Reject new submissions; wait only when requested."""
+    def shutdown(
+        self,
+        wait: bool = True,
+        timeout: float | None = None,
+    ) -> None:
+        """Reject new submissions and optionally wait for shutdown completion.
+
+        Args:
+            wait: Whether to wait for shutdown completion.
+            timeout: Maximum time to wait, in seconds. None means no limit.
+        """
+        if timeout is not None and timeout < 0:
+            raise ValueError("timeout must be non-negative")
+
         with self._lock:
             if not self._started:
                 self._shutdown = True
+                self._shutdown_complete.set()
                 return
 
-            if self._shutdown:
-                threads = list(self._threads)
-                should_finish = False
-            else:
+            if not self._shutdown:
                 self._shutdown = True
-                threads = list(self._threads)
-                should_finish = True
-
-        if should_finish:
-            if wait:
-                self._finish_shutdown()
-            else:
-                from threading import Thread
-
-                Thread(
+                self._shutdown_thread = Thread(
                     target=self._finish_shutdown,
                     name="taskweave-shutdown",
-                    daemon=True,
-                ).start()
-        elif wait:
-            for thread in threads:
-                thread.join()
+                    daemon=False,
+                )
+                self._shutdown_thread.start()
+
+        if wait:
+            self._shutdown_complete.wait(timeout=timeout)

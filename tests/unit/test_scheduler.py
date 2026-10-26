@@ -126,3 +126,41 @@ def test_scheduler_rejects_config_with_legacy_arguments():
 
     with pytest.raises(ValueError, match="either config"):
         Scheduler(max_workers=2, config=config)
+
+def test_shutdown_respects_configured_grace_period():
+    import time
+    from threading import Event
+
+    config = TaskWeaveConfig(
+        max_workers=1,
+        queue_capacity=2,
+        shutdown_grace_seconds=0.1,
+    )
+    scheduler = Scheduler(config=config)
+    scheduler.start()
+
+    started = Event()
+    release = Event()
+
+    def blocked_work():
+        started.set()
+        release.wait(timeout=3)
+        return "finished"
+
+    try:
+        future = scheduler.submit(Task(), blocked_work)
+        assert started.wait(timeout=2), "Task did not start"
+
+        before = time.monotonic()
+        scheduler.shutdown(wait=True)
+        elapsed = time.monotonic() - before
+
+        assert elapsed < 1.0, (
+            f"Shutdown exceeded the grace period unexpectedly: {elapsed:.2f}s"
+        )
+        assert not future.done(), "Blocked task should still be running"
+    finally:
+        release.set()
+        scheduler.shutdown(wait=True)
+
+    assert future.result(timeout=2) == "finished"
