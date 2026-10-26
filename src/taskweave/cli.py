@@ -26,8 +26,10 @@ def main() -> None:
         return
 
     if args[0] == "demo":
-        print("TaskWeave foundation is installed.")
-        print("The full scheduler is implemented incrementally in subsequent phases.")
+        print("TaskWeave scheduler foundation is installed.")
+        print("Implemented: FIFO scheduling, bounded worker pool, cancellation,")
+        print("timeouts, validated configuration, and graceful shutdown.")
+        print("Performance benchmarking and priority scheduling remain in progress.")
         return
 
     print(f"Unknown command: {args[0]}")

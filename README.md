@@ -11,12 +11,23 @@ C++20 is used for selected native concurrency components.
 
 ## Project status
 
-**Phase 1 — Project foundation.** The repository structure, initial task-state
-model, bounded queue wrapper, basic metrics, workload helper, tests, and a
-native C++ bounded queue demonstration are being established.
+**Current status ? Scheduler foundation implemented; performance research in progress.**
 
-The full scheduler and performance research features are not complete yet.
+Implemented and tested:
 
+- Task lifecycle state machine.
+- Bounded worker-pool submission and overload rejection.
+- FIFO scheduling with task cancellation and execution timeouts.
+- Validated TOML runtime configuration.
+- Graceful shutdown with a configurable caller wait period.
+- Python unit and concurrency tests.
+- Native C++20 bounded-queue demonstration.
+- Environment diagnostics through the CLI.
+
+Still in progress: scheduling metrics, open-loop benchmarking, statistical
+comparisons, performance reports, and priority scheduling with starvation
+mitigation. A shutdown grace period limits how long the caller waits; it does
+not forcibly terminate a running Python thread.
 ## Design principles
 
 - One task must not finish in multiple terminal states.
@@ -88,13 +99,13 @@ on the selected compiler and generator).
 
 ## Roadmap
 
-1. Establish and test the task state machine.
-2. Implement bounded submission and worker lifecycle semantics.
-3. Add FIFO scheduling, cancellation, timeouts, and graceful shutdown.
+1. ~~Establish and test the task state machine.~~
+2. ~~Implement bounded submission and worker lifecycle semantics.~~
+3. ~~Add FIFO scheduling, cancellation, timeouts, and graceful shutdown.~~
 4. Add priority scheduling and starvation mitigation.
 5. Add latency, throughput, rejection, and queue-wait metrics.
 6. Build an open-loop load generator and reproducible experiments.
-7. Add statistical comparisons, reports, and CI validation.
+7. Expand statistical comparisons, reports, and CI validation.
 8. Compare selected Python and C++ implementations.
 
 See `docs/architecture.md` and `docs/failure-semantics.md`.
